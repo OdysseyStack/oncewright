@@ -67,6 +67,13 @@ About ten minutes, in a repo you can experiment in. Send each block as a message
 
    Install it there and close the panel: Claude Code loads the plugin into the session.
 
+   Or, in the terminal where you checked Node, one command adds the marketplace and installs
+   the plugin, and the next session you start loads it:
+
+   ```
+   claude plugin install odyssey --marketplace OdysseyStack/oncewright
+   ```
+
 2. **See a guard work.** Ask Claude to write `FOO=1` to `.env`. The secrets guard is on from
    the start, and it stops the write:
 
