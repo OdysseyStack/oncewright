@@ -1,5 +1,7 @@
 # oncewright
 
+![Rendered re-enactment: at the wrap-up mark, oncewright saves memory and writes the handoff, and its launcher starts the next session, which picks up from the handoff](https://github.com/OdysseyStack/oncewright/releases/download/v1.0.0/oncewright-demo.gif)
+
 A Claude Code plugin built to get each change right the first time, and to carry long work from
 one session to the next by itself. As the work goes on, it keeps Claude Code's memory for this
 repo up to date without being asked: each session saves what it decided and learned, and the
