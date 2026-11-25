@@ -52,7 +52,9 @@ An independent project for Claude Code, not affiliated with or endorsed by Anthr
 About ten minutes, in a repo you can experiment in. Send each block as a message of its own.
 
 1. **Check Node, then install.** The kit's hooks are Node scripts and need Node.js 22 or later:
-   run `node --version` in a terminal. Without it the hooks can't start, so they block nothing.
+   run `node --version` in a terminal. Without it the hooks can't start: from Claude Code 2.1.295 the secrets
+   guard then blocks every edit and shell command (an older release lets them through), and the
+   other hooks guard nothing.
    Then add the marketplace:
 
    ```
@@ -65,10 +67,11 @@ About ten minutes, in a repo you can experiment in. Send each block as a message
    /plugin install odyssey@odyssey-ai
    ```
 
-   Install it there and close the panel: Claude Code loads the plugin into the session.
+   Install it there and close the panel: Claude Code loads the plugin into the session. If
+   `/odyssey:setup` is not listed yet, run `/reload-plugins`.
 
    Or, in the terminal where you checked Node, one command adds the marketplace and installs
-   the plugin, and the next session you start loads it:
+   the plugin, and the next session you start loads it (Claude Code 2.1.292 or later):
 
    ```
    claude plugin install odyssey --marketplace OdysseyStack/oncewright
@@ -591,11 +594,14 @@ Tested on macOS; CI also runs the automated tests on Linux and Windows.
   against the newest release, so that is the one to run. The oldest release the kit's hooks
   can start on is 2.1.139, which added exec-form hooks (the `args` field) that they use on every
   platform. Some extras need later ones: the status bar's spend-limit bar needs 2.1.251, the
-  spinner tips 2.1.247, and peek 2.1.288.
+  spinner tips 2.1.247, peek 2.1.288, the one-command install from a terminal 2.1.292, and the
+  secrets guard's block when Node is missing 2.1.295 (an older release lets the calls through).
 - **Node.js 22 or later.** The hooks and the setup script are Node ESM scripts, and their tests
   use the built-in `node --test` runner. Node 20 reached end of life in April 2026.
   `/odyssey:setup` checks for Node first, and each session start tells you when it is missing
-  or older.
+  or older. Without a `node` command, from Claude Code 2.1.295 the secrets guard blocks every edit and
+  shell command, so Claude can't edit files or run commands until you install Node or turn the kit off with
+  `claude plugin disable odyssey`.
 - **git.** Setup runs only at the root of a git repo, and the skills and hooks read the repo
   through it.
 
@@ -1055,10 +1061,10 @@ fires.
 
 | Hook | Fires | Does | On | When it fails |
 |---|---|---|---|---|
-| `node-check` | when a session starts, resumes, is cleared or is compacted | prints nothing when `node` is 22 or later; otherwise shows you that the kit's guards and hooks are off in this session and that they need Node.js 22 or later. On Windows it runs under Git Bash, which Git for Windows installs | always | open |
+| `node-check` | when a session starts, resumes, is cleared or is compacted | prints nothing when `node` is 22 or later; otherwise shows you that the kit's hooks need Node.js 22 or later, that without `node` the secrets guard blocks every edit and shell command (Claude Code 2.1.295 or later), and that `claude plugin disable odyssey` turns the kit off. On Windows it runs under Git Bash, which Git for Windows installs | always | open |
 | `session-start` | when a session starts, resumes, is cleared or is compacted | tells Claude, before its first turn, that the session was compacted or that a handoff message is waiting, without reading the message to it; and shows you a line for a waiting handoff, and one naming any copy setup made outside the plugin (the status bar, a mod, the launcher) that differs from this kit version's, except after a compaction | always | open |
 | `load-log` | when Claude Code loads an instruction file: a `CLAUDE.md`, a rule, or a file one of them imports | writes one line naming the file, the session and why it loaded to `~/.claude/odyssey-loads/`, which the docs check and `/odyssey:audit` read; past 256 KB the log starts over. An `AGENTS.md` that Claude Code reads without an import sends no load event, so the log never lists it | `hooks.loadLog` | open: Claude Code ignores its result |
-| `protect-env`, the secrets guard | before Edit, Write, MultiEdit, NotebookEdit, Bash, PowerShell and the MCP file tools | blocks a write to a secret file, and keeps Claude's tools off the trust file and the approve command | always | closed: an error inside it blocks |
+| `protect-env`, the secrets guard | before Edit, Write, MultiEdit, NotebookEdit, Bash, PowerShell and the MCP file tools | blocks a write to a secret file, and keeps Claude's tools off the trust file and the approve command | always | closed: an error inside it blocks, and so does a failure to start or a timeout (Claude Code 2.1.295 or later) |
 | `protect-managed` | before Edit, Write, MultiEdit, NotebookEdit | blocks edits to a file `/odyssey:setup` stamped | always | open |
 | `bash-guard` | before Bash and PowerShell | the zsh guard: blocks a Bash command that uses zsh's `${(P)…}` or `${(f)…}`, which Claude Code's safety check refuses, and names the plain test to use. The commit gate: before a `git commit` (`git -C <dir> commit` and a commit in a chain included), runs `gate.stages` and the docs stage, every one to its end, once trusted, and blocks the commit with the failing stages' names and the end of their output; a green gate is silent | the zsh guard always; the commit gate when `gate.stages` is set, unless `hooks.commitGate` is `false` | open |
 | `protect-manifest` | before Edit, Write, MultiEdit, NotebookEdit | blocks hand edits to `package.json`, the npm, yarn and pnpm lockfiles, and `protect.manifests` | `hooks.protectManifest` | open |
@@ -1069,8 +1075,10 @@ fires.
 
 **Fail closed, fail open.** Claude Code lets a call through when a hook crashes, can't start (no
 `node` on the PATH) or times out; `node-check` tells you at each session start when `node` is
-missing or older than 22. The secrets guard catches every error itself and blocks, so an
-unreadable payload or an unresolvable path is a block, not a pass. The others fail open: on an
+missing or older than 22. The secrets guard is the exception: its entries in `hooks.json` carry
+`"onFailure": "block"`, so from Claude Code 2.1.295 a guard that can't start or times out blocks
+the call, and it catches every error of its own and blocks, so an unreadable payload or an
+unresolvable path is a block, not a pass. The others fail open: on an
 error of their own they let the call through without a message. An invalid config, or a start
 folder that can't be read, is announced once per session; the opt-in hooks are then off and the
 secrets guard keeps its default patterns, so neither locks a session. Timeouts are explicit: 10

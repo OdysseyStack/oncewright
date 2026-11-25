@@ -25,7 +25,9 @@ the repo root.
 - Run `node --version`. No `node`, or a version below 22 → stop, and give the install steps:
   install Node 22 or later from https://nodejs.org, or with a version manager (`nvm install 22`,
   `fnm install 22`); then restart Claude Code, so its hooks find the new `node`, and run
-  `/odyssey:setup` again. Without Node the kit's hooks cannot start, so they guard nothing.
+  `/odyssey:setup` again. Without Node the kit's hooks cannot start: from Claude Code 2.1.295 the
+  secrets guard then blocks every Bash call, this one included, so a blocked `node --version`
+  also means no Node; on an older release nothing is guarded.
 - Run `git rev-parse --show-toplevel`. Not a git repo → stop: setup runs at the root of a git
   repo. Run every command below from that root.
 

@@ -109,7 +109,7 @@ const STUB_GATE =
   'require("node:fs").appendFileSync("gate-runs.txt", "ran\\n");\n' +
   'console.error("TYPE ERROR in src/a.ts");\nprocess.exit(1);\n';
 
-test("hooks.json wires every Node hook in exec form and the Node check in shell form, with the spec's matchers and timeouts", () => {
+test("hooks.json wires every Node hook in exec form and the Node check in shell form, with the spec's matchers and timeouts, and the secrets guard blocks when it can't start", () => {
   const wiring = JSON.parse(readFileSync(path.join(HOOKS, "hooks.json"), "utf8")).hooks;
   const seen = [];
   for (const [event, groups] of Object.entries(wiring)) {
@@ -118,7 +118,7 @@ test("hooks.json wires every Node hook in exec form and the Node check in shell 
         if (h.args) assert.equal(h.command, "node");
         else assert.equal(h.command, 'sh "${CLAUDE_PLUGIN_ROOT}/hooks/node-check.sh"', "the one hook that must run without Node");
         const script = (h.args?.[0] ?? "${CLAUDE_PLUGIN_ROOT}/hooks/node-check.sh").replace("${CLAUDE_PLUGIN_ROOT}/hooks/", "");
-        seen.push(`${event} ${group.matcher ?? "(all)"} ${script} ${h.timeout}`);
+        seen.push(`${event} ${group.matcher ?? "(all)"} ${script} ${h.timeout}${h.onFailure ? ` onFailure:${h.onFailure}` : ""}`);
       }
     }
   }
@@ -126,41 +126,47 @@ test("hooks.json wires every Node hook in exec form and the Node check in shell 
     "SessionStart (all) node-check.sh 10",
     "SessionStart (all) session-start.mjs 10",
     "InstructionsLoaded (all) load-log.mjs 10",
-    "PreToolUse Edit|Write|MultiEdit|NotebookEdit protect-env.mjs 10",
+    "PreToolUse Edit|Write|MultiEdit|NotebookEdit protect-env.mjs 10 onFailure:block",
     "PreToolUse Edit|Write|MultiEdit|NotebookEdit protect-managed.mjs 10",
     "PreToolUse Edit|Write|MultiEdit|NotebookEdit protect-manifest.mjs 10",
     "PreToolUse Edit|Write|MultiEdit|NotebookEdit protect-append-only.mjs 10",
-    "PreToolUse Bash|PowerShell protect-env.mjs 10",
+    "PreToolUse Bash|PowerShell protect-env.mjs 10 onFailure:block",
     "PreToolUse Bash|PowerShell bash-guard.mjs 600",
-    "PreToolUse mcp__.*__(write_file|edit_file|move_file|edit_block) protect-env.mjs 10",
+    "PreToolUse mcp__.*__(write_file|edit_file|move_file|edit_block) protect-env.mjs 10 onFailure:block",
     "PostToolUse Edit|Write|MultiEdit post-edit.mjs 30",
     "Stop (all) typecheck-gate.mjs 600",
     "Stop (all) wrap-up-stop.mjs 10",
   ]);
-  const wired = new Set(seen.map((line) => line.split(" ").at(-2)));
+  const wired = new Set(seen.map((line) => line.split(" ")[2]));
   const scripts = readdirSync(HOOKS).filter((f) => f.endsWith(".sh") || (f.endsWith(".mjs") && !f.endsWith(".test.mjs")));
   assert.deepEqual(scripts.sort(), [...wired].sort(), "every hook script is wired, and only those");
 });
 
-test("the Node check says nothing with Node 22 or later, and tells the user the guards are off with an older Node or none", () => {
+test("the Node check says nothing with Node 22 or later, and tells the user what an older Node or none means and how to turn the kit off", () => {
   if (process.platform === "win32") return; // a POSIX shell and a stand-in node script; CI counts a skipped test as a failure
-  const bin = (version) => {
+  // null: no node command; otherwise the stand-in prints each line (echo, a builtin: PATH holds only this folder).
+  const bin = (output) => {
     const dir = mkdtempSync(path.join(scratch, "node-"));
-    if (version) writeFileSync(path.join(dir, "node"), `#!/bin/sh\necho ${version}\n`, { mode: 0o755 });
+    const echo = (line) => `echo '${line}'`;
+    if (output !== null) writeFileSync(path.join(dir, "node"), `#!/bin/sh\n${output.split("\n").map(echo).join("\n")}\n`, { mode: 0o755 });
     return dir;
   };
   const run = (PATH) => spawnSync("/bin/sh", [path.join(HOOKS, "node-check.sh")], { env: { PATH }, encoding: "utf8" });
-  for (const PATH of [process.env.PATH, bin("v22.0.0"), bin("v24.11.1")]) {
+  for (const PATH of [process.env.PATH, bin("v22.0.0"), bin("v24.11.1"), bin("Warning: x\nv22.1.0"), bin("v22.1.0\r\n")]) {
     const ok = run(PATH);
     assert.equal(ok.status, 0);
     assert.equal(ok.stdout, "", "no output, so nothing reaches the context");
   }
   const old = run(bin("v20.11.1"));
   assert.equal(old.status, 0);
-  assert.equal(noticeOf(old), "Odyssey: the kit's guards and hooks are off in this session: they need Node.js 22 or later, and found Node.js v20.11.1. Install Node.js 22 or later, then start a new session.");
-  assert.match(noticeOf(run(bin("v9.11.2"))), /found Node\.js v9\.11\.2\./, "compared as a number, not as text");
-  assert.match(noticeOf(run(bin("v20.11.1\r"))), /found Node\.js v20\.11\.1\. /, "a Windows line ending still gives valid JSON");
-  assert.match(noticeOf(run(bin(""))), /and found no node command\./);
+  assert.equal(noticeOf(old), "Odyssey: the kit's hooks need Node.js 22 or later, and found Node.js v20.11.1, so some may not work. Install Node.js 22 or later, then start a new session, or turn the kit off with claude plugin disable odyssey.");
+  const none = run(bin(null));
+  assert.equal(none.status, 0);
+  assert.equal(noticeOf(none), "Odyssey: the kit's hooks need Node.js 22 or later, and found no node command, so from Claude Code 2.1.295 the secrets guard blocks every edit and shell command (an older release lets them through unguarded). Install Node.js 22 or later, then start a new session, or turn the kit off with claude plugin disable odyssey.");
+  assert.match(noticeOf(run(bin("v9.11.2"))), /found Node\.js v9\.11\.2, /, "compared as a number, not as text");
+  assert.match(noticeOf(run(bin("v20.11.1\r"))), /found Node\.js v20\.11\.1, /, "a Windows line ending still gives valid JSON");
+  assert.match(noticeOf(run(bin("Warning: x\nv20.11.1"))), /found Node\.js v20\.11\.1, /, "the version line, not a warning a shim prints first");
+  for (const output of ["Warning: x", "", "v", "\"quoted\" v22"]) assert.match(noticeOf(run(bin(output))), /and found no node command, /, JSON.stringify(output));
 });
 
 test("protect-manifest is off with no config, and blocks manifests when switched on", () => {

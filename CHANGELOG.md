@@ -5,6 +5,37 @@ All notable changes to this plugin are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Every entry names the hooks that
 changed, because a changed hook changes what a session may do.
 
+## [1.0.2] - 2026-11-25
+
+The secrets guard blocks when Node is missing, and the install steps say what to do when the
+plugin's commands don't show yet. Hooks changed: `protect-env`'s three entries in `hooks.json`,
+and `node-check`.
+
+### Changed
+
+- **The secrets guard blocks when it can't start.** Its three entries in `hooks.json` (the edit
+  tools, Bash and PowerShell, the MCP file tools) carry `"onFailure": "block"`. From Claude Code
+  2.1.295, a guard that can't start, as when there is no `node` command, or that times out
+  blocks the call instead of letting it through. So without Node every edit and shell command is
+  blocked until you install Node.js 22 or later or turn the kit off with
+  `claude plugin disable odyssey`. An older Claude Code ignores the setting and lets the calls
+  through, as 1.0.1 did.
+- **`node-check` says what a missing Node means.** Without a `node` command its notice now says
+  that from Claude Code 2.1.295 the secrets guard blocks every edit and shell command, and that
+  an older release lets them through; with Node older than 22, that some hooks
+  may not work. Both name `claude plugin disable odyssey` as the way to turn the kit off.
+- **The Quickstart** says to run `/reload-plugins` when `/odyssey:setup` isn't listed yet after
+  the install, and that the one-command install from a terminal needs Claude Code 2.1.292 or
+  later.
+
+### Fixed
+
+- **`node-check` reads the version line.** A version manager's shim that prints a warning before
+  the version made the check report no `node` command; it now reads the last line that starts
+  with `v` and a digit.
+- **`/odyssey:setup` reads a blocked `node --version` as no Node.** With the guard blocking, its
+  Node check's own Bash call is refused rather than answered.
+
 ## [1.0.1] - 2026-11-25
 
 Five fixes, most for changes in recent Claude Code releases. Hooks changed: `wrap-up-stop`,
