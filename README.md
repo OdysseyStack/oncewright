@@ -587,15 +587,15 @@ Tested on macOS; CI also runs the automated tests on Linux and Windows.
 
 **Needed:**
 
-- **[Claude Code](https://claude.com/claude-code) 2.1.139 or later.** That release added
-  exec-form hooks (the `args` field), which the kit's hooks use on every platform. A plugin
-  can't declare a minimum version, so it is stated here. CI tests every push against the
-  newest Claude Code release. The status bar's helper-agent rows show an agent's model from
-  2.1.205 and its effort from 2.1.214, its spend-limit bar needs 2.1.251, the spinner tips
-  need 2.1.247, and peek needs 2.1.288.
+- **[Claude Code](https://claude.com/claude-code), the latest release.** CI tests every push
+  against the newest release, so that is the one to run. The oldest release the kit's hooks
+  can start on is 2.1.139, which added exec-form hooks (the `args` field) that they use on every
+  platform. Some extras need later ones: the status bar's spend-limit bar needs 2.1.251, the
+  spinner tips 2.1.247, and peek 2.1.288.
 - **Node.js 22 or later.** The hooks and the setup script are Node ESM scripts, and their tests
   use the built-in `node --test` runner. Node 20 reached end of life in April 2026.
-  `/odyssey:setup` checks for Node first.
+  `/odyssey:setup` checks for Node first, and each session start tells you when it is missing
+  or older.
 - **git.** Setup runs only at the root of a git repo, and the skills and hooks read the repo
   through it.
 
@@ -646,7 +646,9 @@ work through.
   `/plugin marketplace update odyssey-ai`, then update the plugin with
   `claude plugin update odyssey@odyssey-ai` in a shell, or **Update now** on the Installed tab of
   `/plugin`. The new version loads in your next session. Then run `/odyssey:setup` again in each
-  repo to upgrade the kit-owned rule it wrote there.
+  repo to upgrade the kit-owned rule it wrote there. The status bar, peek, the wrap-up band and
+  the launcher run from copies outside the plugin, which an update leaves as they were; until
+  setup refreshes them, each session start names the ones that differ.
 - **Pin a version** by adding the marketplace at a release tag:
   `/plugin marketplace add OdysseyStack/oncewright#v1.0.0`. Release tags never move.
   To roll back, pin the previous tag.
@@ -660,9 +662,9 @@ In a session, `/plugin` (Installed tab) disables the plugin. From a shell,
 current repo, and `--scope local` for you alone. Everything the plugin adds goes with it, the
 secrets guard included: that is deliberately the only way to switch the guard off in a repo
 where editing `.env` is the job.
-The status bar, the helper-agent rows, the spinner tips, the wrap-up band, peek and any launcher
-stay, since they live in your user settings and your home folder;
-[Removing it](#removing-it) lists every step to take them out.
+The status bar, the spinner tips, the wrap-up band, peek and any launcher stay, since they live
+in your user settings and your home folder; [Removing it](#removing-it) lists every step to take
+them out.
 
 ### Removing it
 
@@ -926,20 +928,6 @@ doesn't say how you pay, so the bar reads two signs:
 
 On a narrow terminal the first two shorten to `plan ≈ $1.84` and `API ≈ $1.84`.
 
-### Helper-agent rows
-
-The status bar's setup also gives each helper agent (subagent) a row in the bar's style, in the
-panel under the prompt:
-
-```
-Fix round 2 · Opus 5.5 · ctx ███░░░░░░░ 31%
-```
-
-Each row shows the agent's name when it was given one, what it was asked to do, the model it runs
-on, its effort level when the agent or the request sets one, and how full its context window is.
-A task that isn't an agent, such as a background shell, keeps Claude Code's own row. An agent
-that sets no effort runs at your session's and shows none.
-
 ### Spinner tips
 
 While Claude works, Claude Code shows a tip in the spinner line. Setup offers these about the kit,
@@ -977,13 +965,13 @@ The bar reads what Claude Code passes it, and the repo's handoff file only to se
 holds anything. It runs the status line you had before, if any (on Windows, after `where git`
 to find Git Bash for it), and nothing else. It sends nothing anywhere, and writes one file only
 in a session the launcher started: the session's id, the context's percentage and the window's
-size, in `~/.claude/odyssey-launch/`, where the kit's Stop hook reads them. It's one Node script
-for the bar and the rows, which setup copies to `~/.claude/odyssey-statusline.mjs`: a copy, so
-it keeps working when the plugin updates. Setup replaces it whenever this kit version's copy
+size, in `~/.claude/odyssey-launch/`, where the kit's Stop hook reads them. It's one Node script,
+which setup copies to `~/.claude/odyssey-statusline.mjs`: a copy, so it keeps working when the
+plugin updates. Setup replaces it whenever this kit version's copy
 differs, so don't edit it. `/odyssey:setup doctor` checks that it's there, and notes when it
 differs from this kit version's.
 
-### Removing the bar, the rows and the tips
+### Removing the bar and the tips
 
 They stay when you turn the plugin off or uninstall it, since they live in your user settings.
 Remove them before you uninstall, while the kit's script is there, from any folder:
@@ -994,10 +982,11 @@ node <the kit's folder>/scripts/odyssey.mjs tips remove
 ```
 
 `bar remove` puts back the status line you had before setup, takes the bar out of `statusLine`
-and `subagentStatusLine`, and deletes `~/.claude/odyssey-statusline.mjs` and its `.prev` file.
-`tips remove` takes out each tip whose `id` starts with `odyssey-`, keeping your own. If you set
-`ODYSSEY_WRAPUP_PCT` in the `env` block, delete it yourself. Your settings as they were before
-setup's first edit are in `~/.claude/settings.json.before-odyssey`.
+(and out of `subagentStatusLine`, where 1.0.0 also put it), and deletes
+`~/.claude/odyssey-statusline.mjs` and its `.prev` file. `tips remove` takes out each tip whose
+`id` starts with `odyssey-`, keeping your own. If you set `ODYSSEY_WRAPUP_PCT` in the `env`
+block, delete it yourself. Your settings as they were before setup's first edit are in
+`~/.claude/settings.json.before-odyssey`.
 
 ## Peek (experimental)
 
@@ -1056,16 +1045,18 @@ store of approved folders stay; [Removing it](#removing-it), step 5, names them.
 
 ## Hooks
 
-Ten hooks, each its own process, wired in exec form (`node <script>`, no shell), so they start
-the same way on macOS, Linux and Windows. Four are always on: the two file guards, the
-session-start hook, and `bash-guard`'s zsh guard. `bash-guard`'s commit gate is on wherever the
+Eleven hooks, each its own process. Ten are Node scripts wired in exec form (`node <script>`, no
+shell), so they start the same way on macOS, Linux and Windows; `node-check` is a plain shell
+script, since its job is to run where Node can't. Five are always on: the two file guards,
+`node-check`, the session-start hook, and `bash-guard`'s zsh guard. `bash-guard`'s commit gate is on wherever the
 config names gate stages; `wrap-up-stop` acts only in sessions the launcher started; the rest
 are switched on per repo in `.claude/odyssey.json`. None adds to Claude's context until it
 fires.
 
 | Hook | Fires | Does | On | When it fails |
 |---|---|---|---|---|
-| `session-start` | when a session starts, resumes, is cleared or is compacted | tells Claude, before its first turn, that the session was compacted or that a handoff message is waiting, without reading the message to it; and shows you a line for a waiting handoff, except after a compaction | always | open |
+| `node-check` | when a session starts, resumes, is cleared or is compacted | prints nothing when `node` is 22 or later; otherwise shows you that the kit's guards and hooks are off in this session and that they need Node.js 22 or later. On Windows it runs under Git Bash, which Git for Windows installs | always | open |
+| `session-start` | when a session starts, resumes, is cleared or is compacted | tells Claude, before its first turn, that the session was compacted or that a handoff message is waiting, without reading the message to it; and shows you a line for a waiting handoff, and one naming any copy setup made outside the plugin (the status bar, a mod, the launcher) that differs from this kit version's, except after a compaction | always | open |
 | `load-log` | when Claude Code loads an instruction file: a `CLAUDE.md`, a rule, or a file one of them imports | writes one line naming the file, the session and why it loaded to `~/.claude/odyssey-loads/`, which the docs check and `/odyssey:audit` read; past 256 KB the log starts over. An `AGENTS.md` that Claude Code reads without an import sends no load event, so the log never lists it | `hooks.loadLog` | open: Claude Code ignores its result |
 | `protect-env`, the secrets guard | before Edit, Write, MultiEdit, NotebookEdit, Bash, PowerShell and the MCP file tools | blocks a write to a secret file, and keeps Claude's tools off the trust file and the approve command | always | closed: an error inside it blocks |
 | `protect-managed` | before Edit, Write, MultiEdit, NotebookEdit | blocks edits to a file `/odyssey:setup` stamped | always | open |
@@ -1073,19 +1064,20 @@ fires.
 | `protect-manifest` | before Edit, Write, MultiEdit, NotebookEdit | blocks hand edits to `package.json`, the npm, yarn and pnpm lockfiles, and `protect.manifests` | `hooks.protectManifest` | open |
 | `protect-append-only` | before Edit, Write, MultiEdit, NotebookEdit | blocks any edit to `protect.readOnly`, and anything but an append to `protect.appendOnly` | `hooks.protectAppendOnly` | open |
 | `post-edit` | after Edit, Write, MultiEdit | formats the edited file with the repo's own Prettier and ESLint (`hooks.formatOnEdit`, once trusted), then flags relative imports without a `.js` extension in TypeScript under `srcDirs` and `testDirs` (`hooks.esmImportExtension`) | each switch | open |
-| `wrap-up-stop` | when Claude stops, in a session the [launcher](#the-launcher) started | past the wrap-up mark, asks Claude to run `/odyssey:wrap-up`, never twice in a row; after wrap-up's last step, tells the launcher to start the next session, once no background agent, workflow, teammate or shell task is still running | in sessions the launcher started | open |
+| `wrap-up-stop` | when Claude stops, in a session the [launcher](#the-launcher) started | past the wrap-up mark, asks Claude to run `/odyssey:wrap-up`, never twice in a row; after wrap-up's last step, tells the launcher to start the next session, once no background agent, workflow, teammate, shell task or Monitor is still running | in sessions the launcher started | open |
 | `typecheck-gate` | when Claude stops while the working tree holds uncommitted TypeScript changes under `srcDirs` or `testDirs` | runs `hooks.typecheckGate.command`, once trusted; errors send Claude back to fix them, with the end of a long report kept, and a second failure yields to you. A change committed before the stop is not checked here: the commit gate covers commits | `hooks.typecheckGate.enabled` | open |
 
 **Fail closed, fail open.** Claude Code lets a call through when a hook crashes, can't start (no
-`node` on the PATH) or times out. The secrets guard catches every error itself and blocks, so an
+`node` on the PATH) or times out; `node-check` tells you at each session start when `node` is
+missing or older than 22. The secrets guard catches every error itself and blocks, so an
 unreadable payload or an unresolvable path is a block, not a pass. The others fail open: on an
 error of their own they let the call through without a message. An invalid config, or a start
 folder that can't be read, is announced once per session; the opt-in hooks are then off and the
 secrets guard keeps its default patterns, so neither locks a session. Timeouts are explicit: 10
-seconds for the file guards, the session-start hook, the load log and `wrap-up-stop`, 30 for
-`post-edit`, the typecheck gate's own `timeoutSec` (default 300, at most 590) under a 600-second
-ceiling, and 570 seconds for all the commit gate's stages together, under `bash-guard`'s
-600-second ceiling, which its zsh guard shares. A typecheck gate that
+seconds for `node-check`, the file guards, the session-start hook, the load log and
+`wrap-up-stop`, 30 for `post-edit`, the typecheck gate's own `timeoutSec` (default 300, at most
+590) under a 600-second ceiling, and 570 seconds for all the commit gate's stages together, under
+`bash-guard`'s 600-second ceiling, which its zsh guard shares. A typecheck gate that
 times out lets the turn end and says so; a commit gate stage still running at its limit fails
 the gate, so the commit waits.
 
@@ -1275,7 +1267,7 @@ What runs on your machine, part by part:
 
   | You pick | The edit | Files it adds, beside the settings file unless a folder is named |
   |---|---|---|
-  | the status bar | `statusLine` runs the bar, with a status line you had in front of it, and so does `subagentStatusLine` when you have none | `odyssey-statusline.mjs`, and `odyssey-statusline.prev` with the line you had |
+  | the status bar | `statusLine` runs the bar, with a status line you had in front of it | `odyssey-statusline.mjs`, and `odyssey-statusline.prev` with the line you had |
   | the tips | six tips, each `id` starting `odyssey-`, added to `spinnerTipsOverride.tips` | none |
   | the wrap-up band | its folder added to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block | the band, in `odyssey-wrap-up/` |
   | peek | its folder added to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block | peek and a copy of the secrets guard, in `odyssey-peek/` |
@@ -1300,12 +1292,13 @@ oncewright/
                       index-it (+ scripts/survey.py and its test),
                       create-directive, setup, make-a-path, what-next, which-one,
                       wrap-up (+ references/), write-for-me
-  hooks/              hooks.json; session-start, load-log, protect-env, protect-managed,
-                      protect-manifest, protect-append-only, bash-guard, post-edit,
+  hooks/              hooks.json; node-check.sh, session-start, load-log, protect-env,
+                      protect-managed, protect-manifest, protect-append-only, bash-guard, post-edit,
                       typecheck-gate, wrap-up-stop;
                       their tests
   lib/                shared by the hooks and the script: config resolution, trust, the docs
-                      check, the handoff file, what `next` and `open` read, the stamp
+                      check, the handoff file, what `next` and `open` read, the stamp, the
+                      copies setup makes outside the plugin
   scripts/            odyssey.mjs: config | plan | apply | status | doctor | trust |
                       docs check | bar | tips | mod | launcher | next | open;
                       statusline.mjs, the status bar setup copies into ~/.claude;
@@ -1447,7 +1440,7 @@ Where one of them took a line from someone else's work, the sections after this 
   builds before this release left; `status` and `doctor`.
 - The config, `.claude/odyssey.json`, with its schema; the project rules; and the trust model,
   which runs a repo's own commands only once you trust them.
-- The status bar, its helper-agent rows, the spinner tips and the Odyssey theme.
+- The status bar, the spinner tips and the Odyssey theme.
 - Peek, the file viewer in a pane inside Claude Code.
 
 **Writing**

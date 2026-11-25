@@ -110,18 +110,32 @@ test("the Stop hook's mark never passes 300k tokens of the window the bar left, 
   assert.equal(stopHook({ session_id: "s1" }, on), null, "no window size: the percent alone");
 });
 
-test("the Stop hook holds the relaunch while a background agent, workflow, teammate or shell task runs, and says so", () => {
+test("the Stop hook holds the relaunch while a background agent, workflow, teammate or shell task runs, and says so, but not for an MCP server's monitor", () => {
   const base = path.join(fresh("flags"), "repo");
   const on = { ODYSSEY_LAUNCH: base, ODYSSEY_WRAPUP_PCT: "" };
   writeFileSync(`${base}.ctx`, "s1 90\n");
   writeFileSync(`${base}.quit`, "");
   const agent = { id: "a1", type: "subagent", status: "running", description: "run the benchmark" };
-  const held = stopHook({ session_id: "s1", background_tasks: [agent, { id: "m1", type: "monitor", status: "running" }] }, on);
+  const mcp = { id: "m1", type: "monitor", status: "running", server: "github", tool: "watch" };
+  const held = stopHook({ session_id: "s1", background_tasks: [agent, mcp] }, on);
   assert.match(held.systemMessage, /once 1 background task\(s\) finish: run the benchmark/);
   assert.ok(existsSync(`${base}.quit`) && !existsSync(`${base}.restart`), "the relaunch waits");
   assert.equal(held.decision, undefined, "no second wrap-up pass while it waits");
-  assert.equal(stopHook({ session_id: "s1", background_tasks: [{ id: "m1", type: "monitor", status: "running" }] }, on), null, "a monitor doesn't hold it");
+  assert.equal(stopHook({ session_id: "s1", background_tasks: [mcp] }, on), null, "an MCP server's monitor doesn't hold it");
   assert.ok(existsSync(`${base}.restart`) && !existsSync(`${base}.quit`), "the last agent reported: the relaunch goes");
+});
+
+test("the Stop hook holds the relaunch while a Monitor's script runs, listed as monitor since Claude Code 2.1.329 and as shell before", () => {
+  const base = path.join(fresh("flags"), "repo");
+  const on = { ODYSSEY_LAUNCH: base, ODYSSEY_WRAPUP_PCT: "" };
+  writeFileSync(`${base}.quit`, "");
+  for (const type of ["monitor", "shell"]) {
+    const held = stopHook({ session_id: "s1", background_tasks: [{ id: "w1", type, status: "running", description: "watch the deploy" }] }, on);
+    assert.match(held?.systemMessage ?? "", /once 1 background task\(s\) finish: watch the deploy/, type);
+    assert.ok(existsSync(`${base}.quit`) && !existsSync(`${base}.restart`), `${type}: the relaunch waits`);
+  }
+  stopHook({ session_id: "s1", background_tasks: [] }, on);
+  assert.ok(existsSync(`${base}.restart`), "the script ended: the relaunch goes");
 });
 
 test("the Stop hook drops a quit flag older than 15 minutes that no stop held, so an interrupted wrap-up can't end a later session", () => {

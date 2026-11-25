@@ -3,7 +3,9 @@
 // (`/odyssey:what-next` reads it as a cue to write the handoff). On every start,
 // resume, clear or compaction, whether the handoff holds a message, without reading it to
 // Claude: the handoff is read only when the user runs /odyssey:handoff, and nothing it says
-// reaches Claude from here.
+// reaches Claude from here. And, to the user alone, any copy setup made outside the plugin (the
+// status bar, a mod, the launcher) that differs from this kit version's, as one does after
+// `claude plugin update` until /odyssey:setup refreshes it.
 //
 // Each fact is one plain line for Claude, stated as a fact, in the JSON output's
 // `additionalContext`. The waiting handoff also goes to the user, in
@@ -15,6 +17,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { resolveConfig } from "../lib/config.mjs";
 import { HANDOFF, slotState } from "../lib/handoff.mjs";
+import { staleCopies } from "../lib/copies.mjs";
 
 let source;
 try {
@@ -36,8 +39,15 @@ if (source === "compact") lines.push("Odyssey: this session was compacted: a sum
 if (handoff) lines.push(`Odyssey: a handoff message is waiting in ${HANDOFF}; /odyssey:handoff reads it.`);
 const shown = [];
 if (handoff) shown.push("a handoff message is waiting; run /odyssey:handoff to read it.");
-if (lines.length) {
-  const out = { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: lines.join("\n") } };
-  if (shown.length && source !== "compact") out.systemMessage = `Odyssey: ${shown.join(" ")}`;
-  process.stdout.write(`${JSON.stringify(out)}\n`);
+let stale = [];
+try {
+  if (source !== "compact") stale = staleCopies();
+} catch {
+  // A copy that can't be read is doctor's to report.
 }
+if (stale.length === 1) shown.push(`${stale[0]} differs from this kit version's, so the old copy still runs; /odyssey:setup refreshes it.`);
+if (stale.length > 1) shown.push(`${stale.slice(0, -1).join(", ")} and ${stale.at(-1)} differ from this kit version's, so the old copies still run; /odyssey:setup refreshes them.`);
+const out = {};
+if (lines.length) out.hookSpecificOutput = { hookEventName: "SessionStart", additionalContext: lines.join("\n") };
+if (shown.length && source !== "compact") out.systemMessage = `Odyssey: ${shown.join(" ")}`;
+if (Object.keys(out).length) process.stdout.write(`${JSON.stringify(out)}\n`);

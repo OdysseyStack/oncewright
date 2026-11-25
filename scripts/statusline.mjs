@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // The Odyssey status bar. /odyssey:setup copies this file to ~/.claude/odyssey-statusline.mjs and
-// names it in two user settings: `statusLine`, for which it prints up to three rows, and
-// `subagentStatusLine`, for which it prints one JSON line per helper agent's row. Claude Code
-// passes each its JSON on stdin.
+// names it in the user setting `statusLine`, for which it prints up to three rows. Claude Code
+// passes it its JSON on stdin.
 //
 // Row 1: the status line that ran before (its command in odyssey-statusline.prev beside this
 // file; ponytail's default [PONYTAIL] badge gives way to [ODYSSEY], its other badges stay), then
@@ -19,7 +18,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const CELLS = 20; // the bars on the bar's own rows
-const ROW_CELLS = 10; // a helper agent's bar, and a limit's bar on a narrow terminal
+const ROW_CELLS = 10; // a bar on a narrow terminal
 const LIMIT_WARM = 80; // a limit's bar turns gold from here
 // Past the mark, /odyssey:wrap-up: ODYSSEY_WRAPUP_PCT, else 35% of the window, and never past
 // 300k tokens when the window's size is known, since more context means more mistakes whatever
@@ -207,29 +206,6 @@ export function render(data, prev = "", env = process.env, now = Date.now()) {
   return rows.join("\n");
 }
 
-// A model ID as people say it: claude-opus-5-5 → Opus 5.5, claude-haiku-4-5-20251001 → Haiku 4.5.
-export function modelName(id) {
-  const m = String(id ?? "").match(/claude-([a-z]+)-(\d+)(?:-(\d{1,2})(?!\d))?/);
-  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ""}` : String(id ?? "");
-}
-
-// A helper agent's row: its name when it has one, what it was asked to do, its model, its effort
-// when the agent or the call sets one, and how full its context is. A task with no model yet
-// (a background shell, an agent still starting) keeps Claude Code's own row.
-export function row(task, env = process.env) {
-  if (!task?.model) return null;
-  const pct = task.contextWindowSize > 0 ? ((task.tokenCount ?? 0) / task.contextWindowSize) * 100 : null;
-  const content = [
-    task.name,
-    task.label || task.description,
-    modelName(task.model),
-    task.effort == null ? "" : String(task.effort),
-    bar("ctx", pct, { cells: ROW_CELLS, warm: markOf(env, task.contextWindowSize) }),
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  return { id: task.id, content };
-}
 
 // The status line that ran before runs in the shell Claude Code runs status lines in (statusline.md,
 // Windows configuration): on Windows, Git Bash (CLAUDE_CODE_GIT_BASH_PATH, else the bash.exe of the
@@ -275,22 +251,14 @@ if (isMain) {
   } catch {
     // Not JSON: draw from nothing.
   }
-  if (Array.isArray(data?.tasks)) {
-    for (const task of data.tasks) {
-      const out = row(task);
-      if (out) process.stdout.write(`${JSON.stringify(out)}\n`);
-    }
-  } else {
-    tap(data); // first: the Stop hook reads it the moment the turn ends, and the line in front may be slow
-    let prev = "";
-    try {
-      const cmd = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "odyssey-statusline.prev"), "utf8").trim();
-      // 5 seconds, the limit Claude Code gives a helper-agent row's command: Git Bash can take
-      // seconds to start on Windows.
-      if (cmd) prev = spawnSync(cmd, { shell: shellFor(), input, encoding: "utf8", timeout: 5000 }).stdout ?? "";
-    } catch {
-      // No status line ran before this one.
-    }
-    process.stdout.write(render(data, prev));
+  tap(data); // first: the Stop hook reads it the moment the turn ends, and the line in front may be slow
+  let prev = "";
+  try {
+    const cmd = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "odyssey-statusline.prev"), "utf8").trim();
+    // 5 seconds: Git Bash can take seconds to start on Windows.
+    if (cmd) prev = spawnSync(cmd, { shell: shellFor(), input, encoding: "utf8", timeout: 5000 }).stdout ?? "";
+  } catch {
+    // No status line ran before this one.
   }
+  process.stdout.write(render(data, prev));
 }

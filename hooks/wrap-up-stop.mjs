@@ -18,6 +18,9 @@ const PLUGIN = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SKILL = path.join(PLUGIN, "skills", "wrap-up", "SKILL.md");
 const FRESH_MS = 15 * 60 * 1000;
 const HOLDS = new Set(["subagent", "workflow", "teammate", "shell"]);
+// Since Claude Code 2.1.329 a Monitor's script is listed as `monitor`, not `shell`. A `monitor`
+// with a `server` is an MCP server's, which runs as long as the server does, so it never holds.
+const holds = (task) => HOLDS.has(task?.type) || (task?.type === "monitor" && !task.server);
 const TAIL = 256 * 1024; // transcripts grow large, and the last request is near the end
 
 // The tokens the transcript's last request sent, counted as Claude Code counts used_percentage
@@ -58,7 +61,7 @@ export function decide(data, env) {
   const quit = `${base}.quit`;
   if (existsSync(quit)) {
     if (readFileSync(quit, "utf8").startsWith("held") || Date.now() - statSync(quit).mtimeMs < FRESH_MS) {
-      const busy = (data.background_tasks ?? []).filter((task) => HOLDS.has(task?.type));
+      const busy = (data.background_tasks ?? []).filter(holds);
       if (!busy.length) {
         renameSync(quit, `${base}.restart`);
         return null;

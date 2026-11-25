@@ -26,9 +26,9 @@
 //   bar status      whether the user's settings run the status bar (scripts/statusline.mjs,
 //                   copied to ~/.claude/odyssey-statusline.mjs), and whether that copy is
 //                   this kit version's.
-//   bar install     copy the bar there and name it for statusLine and subagentStatusLine in
-//                   ~/.claude/settings.json, keeping a status line already set in front of it.
-//   bar remove      put back the status line kept in front, take the bar out of both settings,
+//   bar install     copy the bar there and name it for statusLine in ~/.claude/settings.json,
+//                   keeping a status line already set in front of it.
+//   bar remove      put back the status line kept in front, take the bar out of the settings,
 //                   and delete its two files.
 //   tips status     whether the user's settings hold the kit's spinner tips, and whether they
 //                   are this kit version's.
@@ -84,6 +84,7 @@ import { docsCheck } from "../lib/docs.mjs";
 import { hereLine, nextStep, openThreads } from "../lib/threads.mjs";
 import { HANDOFF, WORKING, slotState } from "../lib/handoff.mjs";
 import { STAMP } from "../lib/stamp.mjs";
+import { BAR_SOURCE, DIRS, LAUNCH_SOURCE, MODS, barFile, barScript, claudeHome, dirsOf, isMod, launchCopy, launchFile, modCopy, modDir, modSource, runsBar, userSettings } from "../lib/copies.mjs";
 
 const USAGE =
   "Usage: odyssey.mjs config | plan [--answers <file>] [--approve <path>]... | " +
@@ -458,24 +459,11 @@ function wiredKitHooks(file) {
 // The status bar and the spinner tips: /odyssey:setup's two offers for the user's own settings,
 // outside the repo. An edit keeps everything else in the file, and the first one saves the file
 // as it was beside it. A settings file that isn't a JSON object is left alone.
-// Claude Code keeps the user's settings in CLAUDE_CONFIG_DIR when it is set; the trust file stays in ~/.claude.
-const claudeHome = () => process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
-const userSettings = () => path.join(claudeHome(), "settings.json");
-const barFile = () => path.join(claudeHome(), "odyssey-statusline.mjs");
+// The copies and their checks are in lib/copies.mjs, which the session-start hook shares.
 const barPrev = () => path.join(claudeHome(), "odyssey-statusline.prev");
-const BAR_SOURCE = path.join(PLUGIN, "scripts", "statusline.mjs");
 // Forward slashes and quotes: on Windows Claude Code runs a status line through Git Bash, which
 // reads a backslash as an escape, or PowerShell.
 const barCommand = () => `node "${barFile().split(path.sep).join("/")}"`;
-const runsBar = (entry) => typeof entry?.command === "string" && entry.command.includes("odyssey-statusline.mjs");
-// -> "missing" | "same" | "differs": the copy in ~/.claude against this kit version's script.
-function barScript() {
-  try {
-    return readFileSync(barFile()).equals(readFileSync(BAR_SOURCE)) ? "same" : "differs";
-  } catch {
-    return "missing";
-  }
-}
 function readSettings() {
   const file = userSettings();
   let text;
@@ -534,64 +522,9 @@ function tipsCurrent(list) {
   return ours.length === TIPS.length && TIPS.every((tip) => ours.some((e) => e.id === tip.id && e.text === tip.text && Object.keys(e).length === 2));
 }
 
-// The kit's mods, in mods/: each loaded only from a folder that CLAUDE_CODE_PLUGIN_DIRS names, a
-// list Claude Code reads at startup and splits on the OS's path separator (`;` on Windows, `:`
-// elsewhere). Peek, the experimental file viewer, refuses every file until it can read the
-// secrets guard's patterns from the copy beside it; wrap-up, the band past the wrap-up mark,
-// needs nothing beside it.
-const DIRS = "CLAUDE_CODE_PLUGIN_DIRS";
-const GUARD_SOURCE = path.join(PLUGIN, "hooks", "protect-env.mjs");
-const MODS = {
-  peek: {
-    label: "Peek",
-    extra: { "protect-env.mjs": GUARD_SOURCE },
-    copied: " with the kit's secret-file patterns",
-    use: "type /peek in one",
-    older: ", so its secret-file patterns may be older",
-  },
-  "wrap-up": { label: "Wrap-up", extra: {}, copied: "", use: "its band shows once a session passes the wrap-up mark", older: "" },
-};
-const modSource = (name) => path.join(PLUGIN, "mods", name);
-const modDir = (name) => path.join(claudeHome(), `odyssey-${name}`);
-// The folders the settings' list names; null when `env` or the list isn't what Claude Code reads.
-function dirsOf(settings) {
-  const env = settings.env;
-  if (env === undefined) return [];
-  if (env === null || typeof env !== "object" || Array.isArray(env)) return null;
-  const list = env[DIRS];
-  if (list === undefined) return [];
-  return typeof list === "string" ? list.split(path.delimiter).map((dir) => dir.trim()).filter(Boolean) : null;
-}
-const isMod = (name) => (dir) => path.resolve(dir.replace(/^~(?=$|[\\/])/, os.homedir())) === modDir(name);
-// Every file in a folder, by its path inside it, but `.claude-plugin/types/`, which Claude Code
-// writes into a mod's folder when it loads the mod.
-const filesIn = (dir) =>
-  readdirSync(dir, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) => path.relative(dir, path.join(entry.parentPath, entry.name)))
-    .filter((file) => !file.startsWith(path.join(".claude-plugin", "types") + path.sep))
-    .sort();
-// -> "missing" | "same" | "differs": the copy in ~/.claude against this kit version's mod and
-// the files beside it.
-function modCopy(name) {
-  let copy;
-  try {
-    copy = filesIn(modDir(name));
-  } catch {
-    return "missing";
-  }
-  const { extra } = MODS[name];
-  const kit = [...filesIn(modSource(name)), ...Object.keys(extra)].sort();
-  const source = (file) => (Object.hasOwn(extra, file) ? extra[file] : path.join(modSource(name), file));
-  const same = copy.length === kit.length && kit.every((file, i) => copy[i] === file && readFileSync(path.join(modDir(name), file)).equals(readFileSync(source(file))));
-  return same ? "same" : "differs";
-}
-
 // The launcher (scripts/launch.mjs): copied to ~/.claude/odyssey-launch.mjs, and run by a command
 // the user names, one per repo, in ~/.local/bin. The command's second line names the repo it opens,
 // which is how status and remove tell the kit's launchers from other files there.
-const LAUNCH_SOURCE = path.join(PLUGIN, "scripts", "launch.mjs");
-const launchFile = () => path.join(claudeHome(), "odyssey-launch.mjs");
 const binDir = () => path.join(os.homedir(), ".local", "bin");
 const WIN = process.platform === "win32";
 const launcherPath = (cmd) => path.join(binDir(), WIN ? `${cmd}.cmd` : cmd);
@@ -796,7 +729,7 @@ if (command === "config") {
     else if (copy === "same") result(true, `${at}, and it matches this kit version's`);
     else result(false, `${at}, a copy that differs from this kit version's${MODS[name].older}; /odyssey:setup replaces it`);
   }
-  if (runsBar(user?.statusLine) || runsBar(user?.subagentStatusLine)) {
+  if (runsBar(user?.statusLine)) {
     const script = barScript();
     if (script === "missing") result(false, `the status bar runs ${barFile()}, but the file is missing; /odyssey:setup puts it back`);
     else if (script === "same") result(true, `the status bar runs ${barFile()}, and it matches this kit version's script`);
@@ -892,19 +825,17 @@ if (command === "config") {
     settings.statusLine = { type: "command", command: barCommand() };
     edited = true;
   }
-  let addedRows = false;
-  if (!settings.subagentStatusLine) {
-    settings.subagentStatusLine = { type: "command", command: barCommand() };
-    edited = addedRows = true;
-  }
-  const rows = runsBar(settings.subagentStatusLine);
   if (wasOn && script === "same") out.push("Status bar: already on, and its script matches this kit version's.");
   else if (wasOn) out.push(`Status bar: already on; replaced ${barFile()} with this kit version's.`);
-  if (wasOn && addedRows) out.push(`Helper-agent rows: added. ${file} now runs ${barFile()} for each helper agent's row too.`);
   if (!wasOn) {
-    out.push(`Status bar: on. ${file} now runs ${barFile()} for the status line${rows ? " and for each helper agent's row" : ""}.`);
+    out.push(`Status bar: on. ${file} now runs ${barFile()} for the status line.`);
     if (prev) out.push(`Your previous status line runs in front of it: ${prev}.`);
-    if (!rows) out.push("Your own subagentStatusLine is kept, so the helper-agent rows keep its look.");
+  }
+  // Claude Code 2.1.323 dropped subagentStatusLine; 1.0.0 set it to the bar, so a re-run takes it out.
+  if (runsBar(settings.subagentStatusLine)) {
+    delete settings.subagentStatusLine;
+    edited = true;
+    out.push("Took the bar out of subagentStatusLine, a setting Claude Code no longer reads.");
   }
   if (edited) writeSettings(file, settings, out);
   process.stdout.write(`${out.join("\n")}\n`);
@@ -1033,12 +964,7 @@ if (command === "config") {
   if (!top) fail("Odyssey: run this inside a git repo; the launcher opens the repo it was made in.");
   const root = path.resolve(top);
   const mine = launchersFor(root);
-  let copy = "missing";
-  try {
-    copy = readFileSync(launchFile()).equals(readFileSync(LAUNCH_SOURCE)) ? "same" : "differs";
-  } catch {
-    // Not copied yet.
-  }
+  const copy = launchCopy();
   if (action === "status") {
     const note =
       copy === "same"

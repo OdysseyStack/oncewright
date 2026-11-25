@@ -2,7 +2,7 @@
 // `tips`, `mod` and doctor lines that install and check what goes in the user's settings: the
 // rows and what each part shows, the cost's labels, the wrap-up mark, ponytail's default badge
 // giving way, the handoff tag, the limits row and its reset times, each row
-// fitted to the room Claude Code gives it, the helper-agent rows, the install that keeps a status
+// fitted to the room Claude Code gives it, the install that keeps a status
 // line already set and saves the settings first, the tips, peek's copy with the secrets guard
 // beside it and its place in the settings' plugin folders, and the optional theme shipped byte
 // for byte.
@@ -19,7 +19,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { costLabel, modelName, render, row, shellFor, tap, width } from "./statusline.mjs";
+import { costLabel, render, shellFor, tap, width } from "./statusline.mjs";
 
 const BAR = fileURLToPath(new URL("./statusline.mjs", import.meta.url));
 const SCRIPT = fileURLToPath(new URL("./odyssey.mjs", import.meta.url));
@@ -249,35 +249,11 @@ test("a status line kept in front keeps its upper lines above the bar and shares
   assert.deepEqual(strip(render({ context_window: { used_percentage: 42 } }, ultra, { COLUMNS: "55" })).split("\n"), ["[PONYTAIL:ULTRA]", `[ODYSSEY]  ${INF}  ctx ${withMark} 42%`], "one column less: a row of its own");
 });
 
-test("a helper agent's row: its name, its task, its model, its effort when set, and its context; other tasks keep Claude Code's row", () => {
-  assert.equal(modelName("claude-opus-5-5"), "Opus 5.5");
-  assert.equal(modelName("claude-fable-5-1"), "Fable 5.1");
-  assert.equal(modelName("claude-haiku-4-5-20251001"), "Haiku 4.5");
-  assert.equal(modelName("claude-opus-4-20250514"), "Opus 4");
-  assert.equal(modelName("us.anthropic.claude-sonnet-5-v1:0"), "Sonnet 5");
-  assert.equal(modelName("custom-model"), "custom-model");
-  const agent = { id: "a1", type: "local_agent", description: "Draft order 10", label: "Draft order 10", model: "claude-opus-5-5", contextWindowSize: 1000000, tokenCount: 310000 };
-  assert.equal(strip(row(agent, NOENV).content), `Draft order 10 · Opus 5.5 · ctx ${"█".repeat(10)} 31%`);
-  assert.equal(row(agent, NOENV).id, "a1");
-  const under = row({ ...agent, tokenCount: 290000 }, NOENV).content;
-  assert.ok(under.includes(CYAN) && !under.includes(GOLD), "cyan under 300k tokens");
-  assert.ok(row(agent, NOENV).content.includes(GOLD), "gold from 300k tokens, where the mark stops on a 1M window");
-  const named = row({ ...agent, name: "reviewer", effort: "high", tokenCount: 700000 }, NOENV);
-  assert.equal(strip(named.content), `reviewer · Draft order 10 · Opus 5.5 · high · ctx ${"█".repeat(10)} 70%`);
-  assert.ok(named.content.includes(GOLD), "gold from the wrap-up mark");
-  assert.equal(strip(row({ ...agent, contextWindowSize: undefined }, NOENV).content), "Draft order 10 · Opus 5.5", "no window size, no bar");
-  assert.equal(row({ id: "b2", type: "local_bash", description: "npm test" }, NOENV), null);
-});
-
-test("run as a command, the bar prints the row, or one JSON line per helper agent", () => {
+test("run as a command, the bar prints its row", () => {
   const run = (data) => spawnSync(process.execPath, [BAR], { input: JSON.stringify(data), env: { PATH: process.env.PATH }, encoding: "utf8" });
   const main = run({ context_window: { used_percentage: 5 } });
   assert.equal(main.status, 0);
   assert.equal(strip(main.stdout), `[ODYSSEY]  ${INF}  ctx ${withMark} 5%`);
-  const rows = run({ columns: 100, tasks: [{ id: "x", model: "claude-opus-5-5", description: "Review", contextWindowSize: 100, tokenCount: 50 }, { id: "y" }] });
-  const lines = rows.stdout.trim().split("\n").map((line) => JSON.parse(line));
-  assert.deepEqual(lines.map((line) => line.id), ["x"]);
-  assert.equal(strip(lines[0].content), `Review · Opus 5.5 · ctx ${"█".repeat(10)} 50%`);
   assert.equal(run("not json").status, 0, "a payload it can't read draws an empty bar");
 });
 
@@ -323,7 +299,7 @@ test("in a launched session the bar leaves the context window's size after the p
   assert.equal(readFileSync(`${base}.ctx`, "utf8"), "s1 43\n");
 });
 
-test("bar install copies the bar, names it for both rows, keeps a status line already set in front, and saves the settings first", () => {
+test("bar install copies the bar, names it for the status line, keeps a status line already set in front, and saves the settings first", () => {
   const at = home({ statusLine: { type: "command", command: 'bash "/x/ponytail-statusline.sh"' }, theme: "dark" });
   const before = readFileSync(path.join(at, ".claude", "settings.json"));
   assert.equal(odyssey(at, "bar", "status").stdout, "Status bar: off.\n");
@@ -334,7 +310,7 @@ test("bar install copies the bar, names it for both rows, keeps a status line al
   assert.equal(
     first.stdout,
     [
-      `Status bar: on. ${file} now runs ${bar} for the status line and for each helper agent's row.`,
+      `Status bar: on. ${file} now runs ${bar} for the status line.`,
       'Your previous status line runs in front of it: bash "/x/ponytail-statusline.sh".',
       `Saved your settings as they were to ${file}.before-odyssey.`,
       "",
@@ -346,7 +322,7 @@ test("bar install copies the bar, names it for both rows, keeps a status line al
   const settings = settingsOf(at);
   const command = `node "${bar.split(path.sep).join("/")}"`;
   assert.deepEqual(settings.statusLine, { type: "command", command });
-  assert.deepEqual(settings.subagentStatusLine, { type: "command", command });
+  assert.equal(settings.subagentStatusLine, undefined, "Claude Code no longer reads it");
   assert.equal(settings.theme, "dark", "everything else kept");
   assert.equal(odyssey(at, "bar", "status").stdout, "Status bar: on, up to date.\n");
   assert.equal(odyssey(at, "bar", "install").stdout, "Status bar: already on, and its script matches this kit version's.\n");
@@ -357,17 +333,15 @@ test("bar install copies the bar, names it for both rows, keeps a status line al
   assert.ok(readFileSync(`${file}.before-odyssey`).equals(before), "the first copy is never overwritten");
 });
 
-test("bar install on no settings at all, beside a user's own helper-agent rows, and never on a file that isn't JSON", () => {
+test("bar install on no settings at all, beside a user's own subagentStatusLine, and never on a file that isn't JSON", () => {
   const fresh = home();
   const file = path.join(fresh, ".claude", "settings.json");
   const out = odyssey(fresh, "bar", "install").stdout;
-  assert.match(out, /^Status bar: on\. .* for the status line and for each helper agent's row\.\n$/);
+  assert.match(out, /^Status bar: on\. .* for the status line\.\n$/);
   assert.ok(!existsSync(`${file}.before-odyssey`), "nothing to save");
   assert.equal(readFileSync(path.join(fresh, ".claude", "odyssey-statusline.prev"), "utf8"), "", "no status line before");
   const own = home({ subagentStatusLine: { type: "command", command: "my-rows" } });
-  const kept = odyssey(own, "bar", "install").stdout.split("\n");
-  assert.match(kept[0], / for the status line\.$/);
-  assert.equal(kept[1], "Your own subagentStatusLine is kept, so the helper-agent rows keep its look.");
+  assert.match(odyssey(own, "bar", "install").stdout.split("\n")[0], / for the status line\.$/);
   assert.deepEqual(settingsOf(own).subagentStatusLine, { type: "command", command: "my-rows" });
   const broken = home("{ not json");
   const result = odyssey(broken, "bar", "install");
@@ -382,6 +356,8 @@ test("bar remove puts back the status line kept in front and deletes the bar's f
   const file = path.join(at, ".claude", "settings.json");
   odyssey(at, "bar", "install");
   odyssey(at, "tips", "install");
+  // An install from 1.0.0 also named the bar in subagentStatusLine; remove takes that out too.
+  writeFileSync(file, JSON.stringify({ ...settingsOf(at), subagentStatusLine: settingsOf(at).statusLine }));
   const bar = odyssey(at, "bar", "remove");
   assert.equal(bar.status, 0, bar.stdout + bar.stderr);
   assert.equal(bar.stdout, `Status bar: removed from ${file}; your previous status line is back: my-line.\n`);
@@ -434,24 +410,25 @@ test("tips install adds the kit's tips beside the user's own, naming only kit sk
   assert.match(refused.stdout, /^Spinner tips: not added\. spinnerTipsOverride in .* isn't the object Claude Code documents, so it was left as it is\.\n$/);
 });
 
-test("bar install on a bar already on says when it adds the helper-agent rows", () => {
+test("bar install takes the bar out of subagentStatusLine, which 1.0.0 set and Claude Code no longer reads", () => {
   const at = home({});
   odyssey(at, "bar", "install");
   const file = path.join(at, ".claude", "settings.json");
   const bar = path.join(at, ".claude", "odyssey-statusline.mjs");
   const settings = settingsOf(at);
-  delete settings.subagentStatusLine;
+  settings.subagentStatusLine = { type: "command", command: `node "${bar.split(path.sep).join("/")}"` };
   writeFileSync(file, JSON.stringify(settings));
   assert.equal(
     odyssey(at, "bar", "install").stdout,
     [
       "Status bar: already on, and its script matches this kit version's.",
-      `Helper-agent rows: added. ${file} now runs ${bar} for each helper agent's row too.`,
+      "Took the bar out of subagentStatusLine, a setting Claude Code no longer reads.",
       "",
     ].join("\n"),
   );
-  assert.deepEqual(settingsOf(at).subagentStatusLine, { type: "command", command: `node "${bar.split(path.sep).join("/")}"` });
-  assert.equal(odyssey(at, "bar", "install").stdout, "Status bar: already on, and its script matches this kit version's.\n", "nothing to add twice");
+  assert.equal(settingsOf(at).subagentStatusLine, undefined);
+  assert.ok(settingsOf(at).statusLine, "the status line kept");
+  assert.equal(odyssey(at, "bar", "install").stdout, "Status bar: already on, and its script matches this kit version's.\n", "nothing to take out twice");
 });
 
 test("doctor checks the bar only when the settings run it: in place and current, a copy that differs, or missing", () => {

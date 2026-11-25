@@ -5,6 +5,43 @@ All notable changes to this plugin are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Every entry names the hooks that
 changed, because a changed hook changes what a session may do.
 
+## [1.0.1] - 2026-11-25
+
+Five fixes, most for changes in recent Claude Code releases. Hooks changed: `wrap-up-stop`,
+`session-start`, and a new one, `node-check`.
+
+### Added
+
+- **`node-check`**, a SessionStart hook in plain shell. The kit's other hooks are Node scripts,
+  and without Node.js 22 or later they can't start, so they guard nothing. This hook prints
+  nothing when `node` is 22 or later; otherwise it tells you that the kit's guards and hooks are
+  off in this session and that they need Node.js 22 or later. On Windows it runs under Git Bash,
+  which Git for Windows installs; without Git Bash it shows a hook error at each session start.
+- **`session-start` names copies an update left behind.** The status bar, peek, the wrap-up band
+  and the launcher run from copies setup made outside the plugin, and `claude plugin update`
+  leaves those as they were. Each session start, but not a compaction, now shows you the copies
+  that differ from this kit version's, and that `/odyssey:setup` refreshes them. When they all
+  match, it shows nothing and tells Claude nothing.
+
+### Fixed
+
+- **`wrap-up-stop` waits for a running Monitor again.** Since Claude Code 2.1.329 the Stop hook's
+  input lists a Monitor's script as `monitor`, not `shell`, so the launcher could start the next
+  session, ending the Monitor, while it still ran. An MCP server's monitor, which the input lists
+  with its server, still doesn't hold the relaunch.
+
+### Removed
+
+- **The helper-agent rows.** Claude Code 2.1.323 removed the `subagentStatusLine` setting, so the
+  rows the status bar drew for each helper agent no longer show. Setup no longer sets it, and a
+  re-run of setup, or `bar remove`, takes the bar out of it where 1.0.0 put it.
+
+### Changed
+
+- **The README asks for the latest Claude Code**, which CI tests every push against, and keeps
+  2.1.139 as the oldest release the hooks can start on. It no longer says that a plugin can't
+  declare a minimum Claude Code version: Claude Code 2.1.323 added a way to.
+
 ## [1.0.0] - 2026-11-24
 
 The first release: the kit as a Claude Code plugin, installed from the `odyssey-ai` marketplace

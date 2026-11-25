@@ -167,7 +167,7 @@ and ponytail is another author's plugin:
 - **The status bar** (`bar install`): how full Claude's context is, with a mark at 35% of the
   window (never past 300k tokens) that says when to wrap up; the model and effort; the
   session's cost at API prices, marked plan or API; on Pro and Max plans, the 5-hour and weekly
-  limits. Up to three rows of its own, and each helper agent's row gets the same look. A status
+  limits. Up to three rows of its own. A status
   line already set stays in front of it, or on rows above it when it has several lines or leaves
   the bar no room (ponytail's plain [PONYTAIL] badge gives way to [ODYSSEY]).
 - **The launcher** (`launcher install <name>`): a command run instead of `claude` that opens this

@@ -1,7 +1,7 @@
 {
   "name": "odyssey",
   "displayName": "Odyssey: oncewright",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Built to get each change right the first time: planned work stays inside the files its plan names, and the repo's gate runs before each commit Claude makes. At a context mark it saves memory, writes the handoff and, with its launcher, starts the next session by itself. Adds a CodeRabbit review loop and guard hooks; its cost is benchmarked against plain Claude Code.",
   "author": {
     "name": "Lincoln Powers ∙ Odyssey AI, Inc.",
